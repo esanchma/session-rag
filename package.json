@@ -1,0 +1,31 @@
+{
+  "name": "session-rag",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "session-rag": "src/main.ts"
+  },
+  "scripts": {
+    "dev": "bun run scripts/build-client.ts && bun run src/main.ts serve",
+    "index": "bun run src/main.ts index",
+    "mcp": "bun run src/main.ts mcp",
+    "test": "bun test",
+    "typecheck": "bun run scripts/build-client.ts && bunx tsc --noEmit",
+    "build": "bun run scripts/build-client.ts && bun build --compile --minify --outfile dist/session-rag src/main.ts",
+    "local-install": "bun run build && cp dist/session-rag ~/.local/bin/session-rag.new && chmod 755 ~/.local/bin/session-rag.new && mv -f ~/.local/bin/session-rag.new ~/.local/bin/session-rag"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.2",
+    "preact": "^11.2.0",
+    "preact-md": "^0.2.1",
+    "remark-gfm": "^4.0.1",
+    "sqlite-vec-linux-x64": "0.1.9",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "preact-render-to-string": "^6.8.2",
+    "typescript": "^5.9.3"
+  }
+}

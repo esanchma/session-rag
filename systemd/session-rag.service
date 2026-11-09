@@ -1,0 +1,10 @@
+[Unit]
+Description=Session RAG local search server
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/session-rag serve
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target
