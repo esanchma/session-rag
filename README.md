@@ -2,15 +2,49 @@
 
 A local app for searching Pi session history in JSONL format and exposing search results through a read-only MCP tool.
 
-## Requirements
+## Platform and Requirements
 
-- Bun 1.4 or later.
-- Ollama with an embedding model. The default is `bge-m3` with 1024 dimensions.
-- Linux x64 for the first build, because `sqlite-vec` is distributed here as a native extension for that platform.
+- The GitHub release provides a 64-bit ELF executable for Linux x86_64 with glibc. Prebuilt binaries for macOS, Windows, and ARM64 are not currently available.
+- Bun 1.4 or later is required only to build from source.
+- Ollama with an embedding model is required for semantic search. The default is `bge-m3` with 1024 dimensions.
 
 Lexical search works without Ollama or `sqlite-vec`. Semantic search uses Ollama and cosine distance through `sqlite-vec`. The current vector query scans the embeddings, so it is not optimized for very large corpora.
 
-## Run
+## Download and Run the Prebuilt Binary
+
+Each GitHub release includes `session-rag-linux-x86_64`, a standalone Linux x86_64 ELF executable. Download the latest release asset and its SHA-256 checksum:
+
+```sh
+curl -fL -o session-rag-linux-x86_64 \
+  https://github.com/esanchma/session-rag/releases/latest/download/session-rag-linux-x86_64
+curl -fL -o session-rag-linux-x86_64.sha256 \
+  https://github.com/esanchma/session-rag/releases/latest/download/session-rag-linux-x86_64.sha256
+sha256sum -c session-rag-linux-x86_64.sha256
+chmod +x session-rag-linux-x86_64
+./session-rag-linux-x86_64 help
+```
+
+Run a one-time index with `./session-rag-linux-x86_64 index`, or start the local web UI and background indexer with `./session-rag-linux-x86_64 serve`. The executable embeds the Bun runtime, so Bun is not needed to run the release binary. Ollama remains optional for lexical search.
+
+To install it under the command name used by the example systemd unit:
+
+```sh
+install -Dm755 session-rag-linux-x86_64 ~/.local/bin/session-rag
+```
+
+To run it as a user-level systemd service, install the unit file from the repository and enable it:
+
+```sh
+mkdir -p ~/.config/systemd/user
+curl -fL -o ~/.config/systemd/user/session-rag.service \
+  https://raw.githubusercontent.com/esanchma/session-rag/main/systemd/session-rag.service
+systemctl --user daemon-reload
+systemctl --user enable --now session-rag.service
+```
+
+## Run from Source
+
+To build and run the application from source:
 
 ```sh
 bun install
