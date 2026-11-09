@@ -53,20 +53,20 @@ bun run index
 bun run dev
 ```
 
-Open <http://127.0.0.1:4174>. The server listens only on loopback. On startup, it scans the session directory; **Revisar sesiones** (Review sessions) forces another scan. The process refreshes the index every 30 seconds. Select a result to open the full conversation and jump to the matching message. Returning to the results preserves the search.
+Open <http://127.0.0.1:4174>. The server listens only on loopback. On startup, it scans the session directory; use the rescan control to trigger another scan. The process refreshes the index every 30 seconds. Select a result to open the full conversation and jump to the matching message. Returning to the results preserves the search.
 
 `bun run index` performs a one-time indexing pass and prints a summary. It does not modify the original files. By default, the database is stored at `~/.local/share/session-rag/sessions.sqlite`, outside the executable, with restricted file permissions.
 
 ## MCP Tool
 
-`bun run src/main.ts mcp` serves `search_sessions` over stdio for MCP-compatible clients. For example, a client can launch the server with this configuration:
+The prebuilt binary serves `search_sessions` over stdio with `session-rag mcp` (or `./session-rag-linux-x86_64 mcp` before installation). From source, use `bun run src/main.ts mcp`. For example, a client can launch the installed binary with this configuration:
 
 ```json
 {
   "mcpServers": {
     "session-rag": {
-      "command": "bun",
-      "args": ["run", "/path/to/session-rag/src/main.ts", "mcp"]
+      "command": "/home/USER/.local/bin/session-rag",
+      "args": ["mcp"]
     }
   }
 }
