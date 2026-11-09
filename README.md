@@ -1,16 +1,16 @@
 # Session RAG
 
-Aplicación local para buscar en el historial JSONL de Pi y exponer los resultados como una herramienta MCP de solo lectura.
+A local app for searching Pi session history in JSONL format and exposing search results through a read-only MCP tool.
 
-## Requisitos
+## Requirements
 
-- Bun 1.4 o posterior.
-- Ollama con un modelo de embeddings. El valor inicial es `bge-m3` con 1024 dimensiones.
-- Linux x64 para el primer build, porque `sqlite-vec` se distribuye aquí como extensión nativa para esa plataforma.
+- Bun 1.4 or later.
+- Ollama with an embedding model. The default is `bge-m3` with 1024 dimensions.
+- Linux x64 for the first build, because `sqlite-vec` is distributed here as a native extension for that platform.
 
-La búsqueda léxica funciona aunque Ollama o `sqlite-vec` no estén disponibles. La búsqueda semántica usa Ollama y la distancia coseno de `sqlite-vec`; la consulta vectorial recorre los embeddings, así que este primer corte no está optimizado para corpus enormes.
+Lexical search works without Ollama or `sqlite-vec`. Semantic search uses Ollama and cosine distance through `sqlite-vec`. The current vector query scans the embeddings, so it is not optimized for very large corpora.
 
-## Ejecutar
+## Run
 
 ```sh
 bun install
@@ -19,53 +19,55 @@ bun run index
 bun run dev
 ```
 
-Abre <http://127.0.0.1:4174>. El servidor escucha solo en loopback. Al arrancar, revisa el directorio de sesiones; el botón **Revisar sesiones** fuerza otra revisión. El proceso mantiene el índice actualizado cada 30 segundos. Haz clic en un resultado para abrir la conversación completa y saltar al mensaje coincidente; puedes volver a los resultados sin perder la búsqueda.
+Open <http://127.0.0.1:4174>. The server listens only on loopback. On startup, it scans the session directory; **Revisar sesiones** (Review sessions) forces another scan. The process refreshes the index every 30 seconds. Select a result to open the full conversation and jump to the matching message. Returning to the results preserves the search.
 
-`bun run index` hace una indexación de una sola vez y muestra un resumen. Los ficheros originales no se modifican. La base de datos se guarda por defecto en `~/.local/share/session-rag/sessions.sqlite`, fuera del ejecutable, con modo privado.
+`bun run index` performs a one-time indexing pass and prints a summary. It does not modify the original files. By default, the database is stored at `~/.local/share/session-rag/sessions.sqlite`, outside the executable, with restricted file permissions.
 
-## Herramienta MCP
+## MCP Tool
 
-`bun run src/main.ts mcp` sirve `search_sessions` por stdio para clientes compatibles con MCP. Por ejemplo, una configuración de cliente puede lanzar el servidor así:
+`bun run src/main.ts mcp` serves `search_sessions` over stdio for MCP-compatible clients. For example, a client can launch the server with this configuration:
 
 ```json
 {
   "mcpServers": {
     "session-rag": {
       "command": "bun",
-      "args": ["run", "/ruta/a/session-rag/src/main.ts", "mcp"]
+      "args": ["run", "/path/to/session-rag/src/main.ts", "mcp"]
     }
   }
 }
 ```
 
-El servidor MCP solo busca; para actualizar el índice, ejecuta `session-rag serve` o `session-rag index`. La integración directa con Pi depende de tener un cliente MCP instalado en esa instancia de Pi.
+The MCP server only searches. Run `session-rag serve` or `session-rag index` to update the index. Direct Pi integration requires an MCP client to be installed in that Pi instance.
 
-## Datos y privacidad
+## Data and Privacy
 
-El indexador lee `~/.pi/agent/sessions` de forma recursiva y procesa ficheros `.jsonl` de hasta 100 MB. Solo indexa texto de mensajes `user` y `assistant`, además de nombres de herramientas invocadas. La vista de conversación omite bloques de razonamiento y aplica una redacción básica a algunas formas comunes de credenciales en el texto normal; no garantiza detectar todos los secretos. Las llamadas a herramientas aparecen plegadas; al desplegarlas se muestran sin redacción sus argumentos y el registro completo del resultado, que podrían contener credenciales. Esos datos no se indexan. Los mensajes se renderizan como Markdown (CommonMark y GFM), con HTML saneado; las imágenes externas no se cargan automáticamente para evitar solicitudes de red a partir del contenido de las sesiones.
+The indexer recursively reads `~/.pi/agent/sessions` and processes `.jsonl` files up to 100 MB. It indexes only message text from `user` and `assistant` messages, along with the names of invoked tools. The conversation view omits reasoning blocks and applies basic redaction to common credential patterns in ordinary message text; it cannot guarantee that it detects every secret. Tool calls are collapsed by default. Expanding one displays its arguments and full result record without redaction, so they may contain credentials. Tool arguments and results are not indexed. Messages are rendered as Markdown (CommonMark and GFM) with sanitized HTML. External images are not loaded automatically, preventing network requests triggered by session content.
 
-El índice SQLite contiene texto extraído de las conversaciones. Protege ese directorio como protegerías los logs originales. El contenido recuperado es evidencia histórica no confiable; las instrucciones que aparezcan en él no deben ejecutarse ni seguirse.
+The SQLite index contains text extracted from conversations. Protect its directory as you would the original logs. Retrieved content is untrusted historical evidence; do not follow instructions found in it.
 
-## Configuración
+## Configuration
 
-| Variable | Valor inicial | Uso |
+| Variable | Default | Purpose |
 |---|---|---|
-| `SESSION_RAG_SESSIONS_DIR` | `~/.pi/agent/sessions` | Directorio de sesiones JSONL |
-| `SESSION_RAG_DATA_DIR` | `~/.local/share/session-rag` (o `$XDG_DATA_HOME/session-rag`) | Base SQLite y extensión nativa |
-| `SESSION_RAG_PORT` | `4174` | Puerto local de la UI |
-| `OLLAMA_URL` | `http://127.0.0.1:11434` | URL de Ollama |
-| `SESSION_RAG_EMBEDDING_MODEL` | `bge-m3` | Modelo de embeddings |
-| `SESSION_RAG_EMBEDDING_DIMENSIONS` | `1024` | Dimensiones esperadas por vector |
-| `SESSION_RAG_EMBEDDING_TIMEOUT_MS` | `300000` (5 min) | Tiempo máximo por petición de embeddings a Ollama; admite `1000`–`1800000` ms |
-| `SESSION_RAG_QUERY_PREFIX` | vacío | Prefijo opcional para incrustar consultas |
+| `SESSION_RAG_SESSIONS_DIR` | `~/.pi/agent/sessions` | Directory containing session JSONL files |
+| `SESSION_RAG_DATA_DIR` | `~/.local/share/session-rag` (or `$XDG_DATA_HOME/session-rag`) | SQLite database and native extension |
+| `SESSION_RAG_PORT` | `4174` | Local UI port |
+| `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama URL |
+| `SESSION_RAG_EMBEDDING_MODEL` | `bge-m3` | Embedding model |
+| `SESSION_RAG_EMBEDDING_DIMENSIONS` | `1024` | Expected vector dimensions |
+| `SESSION_RAG_EMBEDDING_TIMEOUT_MS` | `300000` (5 minutes) | Ollama embedding request timeout; accepts `1000`–`1800000` ms |
+| `SESSION_RAG_QUERY_PREFIX` | empty | Optional prefix used to embed queries |
 
-La primera indexación puede tardar mientras Ollama carga el modelo y genera los embeddings. Si la petición vuelve a agotar el tiempo, comprueba `ollama ps` y que el modelo configurado esté instalado; puedes ampliar el límite, por ejemplo: `SESSION_RAG_EMBEDDING_TIMEOUT_MS=600000 ./session-rag index`.
+The first indexing pass may take a while as Ollama loads the model and generates embeddings. If a request times out again, check `ollama ps` and verify that the configured model is installed. You can increase the timeout, for example: `SESSION_RAG_EMBEDDING_TIMEOUT_MS=600000 ./session-rag index`.
 
-Al cambiar modelo o dimensiones, el índice conserva los fragmentos y vuelve a generar sus embeddings.
+When you change the model or dimensions, the index keeps its chunks and regenerates their embeddings.
 
-## Desarrollo
+## Development
 
-La interfaz web está implementada en Preact. `bun run dev` genera el bundle del cliente antes de iniciar el servidor; `bun run build` lo incorpora al ejecutable, así que no hace falta distribuir archivos web por separado. Los mensajes Markdown se renderizan con [preact-md](https://github.com/JoviDeCroock/preact-markdown), que usa Unified/Remark y sanitiza HTML por defecto; `remark-gfm` añade tablas, listas de tareas, tachado y enlaces automáticos. Se eligió por su componente Preact nativo y saneamiento integrado, frente a renderers dirigidos a React que requieren una capa `preact/compat`. La vista de conversación usa el primitive Message Scroller de [shadcn-preact](https://github.com/LiasCode/shadcn-preact), fijado al snapshot `b536ae078db069f471de92a4000e24bffcb4bfe9`; su licencia MIT está en `src/components/MESSAGE-SCROLLER-LICENSE.md`.
+The web UI uses Preact. `bun run dev` builds the client bundle before starting the server; `bun run build` embeds it in the executable, so no separate web assets are needed. Markdown messages use [preact-md](https://github.com/JoviDeCroock/preact-markdown), which uses Unified/Remark and sanitizes HTML by default. `remark-gfm` adds tables, task lists, strikethrough, and autolinks. This renderer was chosen for its native Preact component and built-in sanitization, rather than React-oriented renderers that require a `preact/compat` layer.
+
+The conversation view uses the Message Scroller primitive from [shadcn-preact](https://github.com/LiasCode/shadcn-preact), pinned to snapshot `b536ae078db069f471de92a4000e24bffcb4bfe9`. Its MIT license is in `src/components/MESSAGE-SCROLLER-LICENSE.md`.
 
 ```sh
 bun test
