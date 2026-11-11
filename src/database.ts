@@ -31,13 +31,24 @@ interface SearchRow extends SearchHit {
   distance?: number;
 }
 
-export interface SessionChunkReference {
+export interface SessionSourceReference {
   sourcePath: string;
   sourceSize: number;
   sourceMtimeMs: number;
   sessionId: string;
   cwd: string;
   startedAt: string;
+}
+
+export interface SessionListingEntry {
+  sourceId: number;
+  sessionId: string;
+  cwd: string;
+  startedAt: string;
+  lastActivityAt: string;
+}
+
+export interface SessionChunkReference extends SessionSourceReference {
   messageIndex: number;
   timestamp: string;
   role: "user" | "assistant";
@@ -151,6 +162,30 @@ export class SessionStore {
     const chunks = count("SELECT count(*) AS count FROM chunks");
     const embedded = count("SELECT count(*) AS count FROM embeddings WHERE model = ? AND dimensions = ?", [model, dimensions]);
     return { sources, chunks, embedded, pendingEmbeddings: Math.max(0, chunks - embedded), vectorAvailable: this.vectorAvailable, model, dimensions, lastError };
+  }
+
+  listSessions(): SessionListingEntry[] {
+    return this.db.query<SessionListingEntry, []>(`
+      WITH session_activity AS (
+        SELECT s.id AS sourceId, s.session_id AS sessionId, s.cwd, s.started_at AS startedAt,
+          COALESCE((
+            SELECT c.timestamp FROM chunks c
+            WHERE c.source_id = s.id AND NULLIF(c.timestamp, '') IS NOT NULL
+            ORDER BY julianday(c.timestamp) DESC, c.id DESC LIMIT 1
+          ), NULLIF(s.started_at, ''), '') AS lastActivityAt
+        FROM sources s
+      )
+      SELECT * FROM session_activity
+      ORDER BY COALESCE(julianday(lastActivityAt), 0) DESC, sourceId DESC
+    `).all();
+  }
+
+  sessionSource(sourceId: number): SessionSourceReference | null {
+    return this.db.query<SessionSourceReference, [number]>(`
+      SELECT path AS sourcePath, size AS sourceSize, mtime_ms AS sourceMtimeMs,
+        session_id AS sessionId, cwd, started_at AS startedAt
+      FROM sources WHERE id = ?
+    `).get(sourceId) ?? null;
   }
 
   sessionChunk(chunkId: number): SessionChunkReference | null {

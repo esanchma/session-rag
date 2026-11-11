@@ -22,6 +22,14 @@ interface SearchResponse {
   warning?: string;
 }
 
+interface SessionSummary {
+  sourceId: number;
+  sessionId: string;
+  cwd: string;
+  startedAt: string;
+  lastActivityAt: string;
+}
+
 interface SessionMessage {
   id: string;
   timestamp: string;
@@ -60,6 +68,12 @@ function App() {
   const [session, setSession] = useState<SessionConversation | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionError, setSessionError] = useState("");
+  const [showingSessions, setShowingSessions] = useState(false);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState("");
+  const [selectedBrowserSession, setSelectedBrowserSession] = useState<SessionSummary | null>(null);
+  const sessionInfo = selectedHit ?? selectedBrowserSession;
 
   async function refreshStatus() {
     try {
@@ -104,13 +118,36 @@ function App() {
     }
   }
 
-  async function openSession(hit: SearchHit) {
-    setSelectedHit(hit);
+  async function toggleSessions() {
+    if (showingSessions) {
+      setShowingSessions(false);
+      return;
+    }
+    setShowingSessions(true);
+    setSessionsLoading(true);
+    setSessionsError("");
+    try {
+      const response = await fetch("/api/sessions");
+      const data = await response.json() as { sessions?: SessionSummary[]; error?: string };
+      if (!response.ok) throw new Error(data.error || response.statusText);
+      setSessions(data.sessions ?? []);
+    } catch (error) {
+      setSessionsError(errorMessage(error));
+    } finally {
+      setSessionsLoading(false);
+    }
+  }
+
+  async function openSession(target: SearchHit | SessionSummary) {
+    const fromSearch = "id" in target;
+    setSelectedHit(fromSearch ? target : null);
+    setSelectedBrowserSession(fromSearch ? null : target);
     setSession(null);
     setSessionError("");
     setSessionLoading(true);
     try {
-      const response = await fetch(`/api/session?chunkId=${encodeURIComponent(hit.id)}`);
+      const identifier = fromSearch ? `chunkId=${target.id}` : `sourceId=${target.sourceId}`;
+      const response = await fetch(`/api/session?${identifier}`);
       const data = await response.json() as SessionConversation & { error?: string };
       if (!response.ok) throw new Error(data.error || response.statusText);
       setSession(data);
@@ -145,9 +182,14 @@ function App() {
           <h1>Session RAG</h1>
           <p>Índice local y de solo lectura de sesiones Pi.</p>
         </div>
-        <button type="button" onClick={() => void startIndexing()} disabled={indexing}>
-          {indexing ? "Comprobando…" : "Revisar sesiones"}
-        </button>
+        <div class="header-actions">
+          {!selectedHit && !selectedBrowserSession && <button type="button" class="secondary-button" onClick={() => void toggleSessions()} aria-expanded={showingSessions}>
+            {showingSessions ? "Volver a búsqueda" : "Todas las sesiones"}
+          </button>}
+          <button type="button" onClick={() => void startIndexing()} disabled={indexing}>
+            {indexing ? "Comprobando…" : "Revisar sesiones"}
+          </button>
+        </div>
       </header>
       <section class="status" aria-live="polite">
         {status && ([
@@ -163,15 +205,21 @@ function App() {
           </div>
         ))}
       </section>
-      {selectedHit ? (
-        <SessionDetail
-          hit={selectedHit}
-          session={session}
-          loading={sessionLoading}
-          error={sessionError}
-          onBack={() => { setSelectedHit(null); setSession(null); }}
-        />
-      ) : <>
+      {sessionInfo && <SessionDetail
+        sessionInfo={sessionInfo}
+        hasMatch={Boolean(selectedHit)}
+        session={session}
+        loading={sessionLoading}
+        error={sessionError}
+        onBack={() => { setSelectedHit(null); setSelectedBrowserSession(null); setSession(null); }}
+      />}
+      {!sessionInfo && showingSessions && <SessionBrowser
+        sessions={sessions}
+        loading={sessionsLoading}
+        error={sessionsError}
+        onOpen={(item) => void openSession(item)}
+      />}
+      {!sessionInfo && !showingSessions && <>
       <form class="search" onSubmit={(event) => void search(event)}>
         <input
           name="q"
@@ -213,8 +261,37 @@ function SearchResult({ hit, onOpen }: Readonly<{ hit: SearchHit; onOpen: () => 
   );
 }
 
-function SessionDetail({ hit, session, loading, error, onBack }: Readonly<{
-  hit: SearchHit;
+function SessionBrowser({ sessions, loading, error, onOpen }: Readonly<{
+  sessions: SessionSummary[];
+  loading: boolean;
+  error: string;
+  onOpen: (session: SessionSummary) => void;
+}>) {
+  return (
+    <section class="session-browser" aria-labelledby="session-browser-title">
+      <h2 id="session-browser-title">Sesiones indexadas</h2>
+      <p>Ordenadas por última actividad, de más reciente a más antigua.</p>
+      {loading && <output class="empty">Cargando sesiones…</output>}
+      {error && <p class="notice" role="alert">No se pudieron cargar las sesiones: {error}</p>}
+      {!loading && sessions.length === 0 && !error && <p class="empty">No hay sesiones indexadas.</p>}
+      {sessions.length > 0 && <ol class="session-list">
+        {sessions.map((item) => (
+          <li key={item.sourceId}>
+            <button type="button" class="session-list-item" onClick={() => onOpen(item)}>
+              <strong>Sesión {item.sessionId || "sin id"}</strong>
+              <span class="meta">Última actividad: <time dateTime={item.lastActivityAt || item.startedAt}>{formatTimestamp(item.lastActivityAt || item.startedAt)}</time></span>
+              <span class="meta">{item.cwd || "Directorio no disponible"}</span>
+            </button>
+          </li>
+        ))}
+      </ol>}
+    </section>
+  );
+}
+
+function SessionDetail({ sessionInfo, hasMatch, session, loading, error, onBack }: Readonly<{
+  sessionInfo: Pick<SessionSummary, "sessionId" | "cwd"> & { sourcePath?: string };
+  hasMatch: boolean;
   session: SessionConversation | null;
   loading: boolean;
   error: string;
@@ -224,16 +301,16 @@ function SessionDetail({ hit, session, loading, error, onBack }: Readonly<{
     <section class="session-detail">
       <div class="session-heading">
         <div>
-          <h2>Sesión {hit.sessionId || "sin id"}</h2>
-          <p>{hit.cwd || hit.sourcePath} · Abierta en el resultado coincidente</p>
+          <h2>Sesión {session?.sessionId || sessionInfo.sessionId || "sin id"}</h2>
+          <p>{sessionInfo.cwd || sessionInfo.sourcePath || "Directorio no disponible"} · {hasMatch ? "Abierta en el resultado coincidente" : "Abierta desde todas las sesiones"}</p>
         </div>
-        <button type="button" class="secondary-button" onClick={onBack}>Volver a resultados</button>
+        <button type="button" class="secondary-button" onClick={onBack}>{hasMatch ? "Volver a resultados" : "Volver a sesiones"}</button>
       </div>
       {loading && <output class="empty">Cargando conversación…</output>}
       {error && <p class="notice" role="alert">No se pudo abrir la sesión: {error}</p>}
       {session && <MessageScroller.Provider defaultScrollPosition="start" autoScroll={false} scrollMargin={24}>
         <div class="session-toolbar">
-          <span class="meta">{session.messages.length} mensajes · objetivo resaltado</span>
+          <span class="meta">{session.messages.length} mensajes{session.targetMessageId ? " · coincidencia resaltada" : ""}</span>
           <SessionScrollControls targetMessageId={session.targetMessageId} />
         </div>
         <div class="message-scroller">
@@ -273,6 +350,11 @@ function SessionScrollControls({ targetMessageId }: Readonly<{ targetMessageId: 
       <button type="button" class="secondary-button" onClick={() => scrollToEnd({ behavior: "smooth" })}>Al final</button>
     </div>
   );
+}
+
+function formatTimestamp(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? value || "Fecha desconocida" : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 function errorMessage(error: unknown): string {

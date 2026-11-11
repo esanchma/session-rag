@@ -53,7 +53,7 @@ bun run index
 bun run dev
 ```
 
-Open <http://127.0.0.1:4174>. The server listens only on loopback. On startup, it scans the session directory; use the rescan control to trigger another scan. The process refreshes the index every 30 seconds. Select a result to open the full conversation and jump to the matching message. Returning to the results preserves the search.
+Open <http://127.0.0.1:4174>. The server listens only on loopback. On startup, it scans the session directory; use the rescan control to trigger another scan. The process refreshes the index every 30 seconds. Select a result to open the full conversation and jump to the matching message. Returning to the results preserves the search. Use **All sessions** to browse indexed conversations by most recent activity and open any session without searching first.
 
 `bun run index` performs a one-time indexing pass and prints a summary. It does not modify the original files. By default, the database is stored at `~/.local/share/session-rag/sessions.sqlite`, outside the executable, with restricted file permissions.
 

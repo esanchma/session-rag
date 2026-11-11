@@ -30,6 +30,27 @@ describe("SessionStore retrieval", () => {
     }
   });
 
+  test("lists indexed sessions by most recent activity", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "session-rag-list-"));
+    const store = new SessionStore(join(dir, "sessions.sqlite"));
+    try {
+      store.replaceSource({ path: "/tmp/older-session.jsonl", size: 10, mtimeMs: 1, sessionId: "older", cwd: "/work/older", startedAt: "2026-11-09T10:00:00.000Z" }, [
+        { timestamp: "2026-11-09T10:15:00.000Z", role: "user", content: "older message" },
+      ]);
+      store.replaceSource({ path: "/tmp/newer-session.jsonl", size: 10, mtimeMs: 1, sessionId: "newer", cwd: "/work/newer", startedAt: "2026-11-07T10:00:00.000Z" }, [
+        { timestamp: "2026-11-10T10:30:00.000Z", role: "user", content: "newer message" },
+      ]);
+
+      const sessions = store.listSessions();
+      expect(sessions.map((session) => session.sessionId)).toEqual(["newer", "older"]);
+      expect(sessions[0]?.lastActivityAt).toBe("2026-11-10T10:30:00.000Z");
+      expect(store.sessionSource(sessions[0]!.sourceId)?.cwd).toBe("/work/newer");
+    } finally {
+      store.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("indexes lexical content and returns neighboring conversation context", async () => {
     const dir = await mkdtemp(join(tmpdir(), "session-rag-db-"));
     const store = new SessionStore(join(dir, "sessions.sqlite"));

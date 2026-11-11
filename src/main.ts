@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, sep } from "node:path";
-import { SessionStore } from "./database.ts";
+import { SessionStore, type SessionChunkReference, type SessionSourceReference } from "./database.ts";
 import { loadConfig } from "./config.ts";
 import { SessionIndexer } from "./indexer.ts";
 import { runMcp } from "./mcp.ts";
@@ -83,6 +83,7 @@ async function handleGet(url: URL, store: SessionStore, embedder: OllamaEmbedder
     "X-Content-Type-Options": "nosniff",
   } });
   if (url.pathname === "/api/status") return json(store.status(config.embeddingModel, config.embeddingDimensions));
+  if (url.pathname === "/api/sessions") return json({ sessions: store.listSessions() });
   if (url.pathname === "/api/search") return searchRequest(url, store, embedder);
   if (url.pathname === "/api/session") return sessionRequest(url, store);
   return json({ error: "Not found" }, 404);
@@ -97,11 +98,19 @@ async function searchRequest(url: URL, store: SessionStore, embedder: OllamaEmbe
 }
 
 async function sessionRequest(url: URL, store: SessionStore): Promise<Response> {
-  const chunkId = Number(url.searchParams.get("chunkId"));
-  if (!Number.isSafeInteger(chunkId) || chunkId < 1) return json({ error: "chunkId must be a positive integer" }, 400);
+  const chunkIdValue = url.searchParams.get("chunkId");
+  const sourceIdValue = url.searchParams.get("sourceId");
+  if ((chunkIdValue === null) === (sourceIdValue === null)) {
+    return json({ error: "Provide exactly one of chunkId or sourceId" }, 400);
+  }
+  const id = Number(chunkIdValue ?? sourceIdValue);
+  if (!Number.isSafeInteger(id) || id < 1) return json({ error: "Session identifier must be a positive integer" }, 400);
 
-  const reference = store.sessionChunk(chunkId);
-  if (!reference) return json({ error: "Session result not found" }, 404);
+  const chunkReference = chunkIdValue !== null ? store.sessionChunk(id) : null;
+  const reference: SessionChunkReference | SessionSourceReference | null = chunkIdValue !== null
+    ? chunkReference
+    : store.sessionSource(id);
+  if (!reference) return json({ error: "Session not found" }, 404);
 
   try {
     const root = await realpath(config.sessionsDir);
@@ -123,19 +132,23 @@ async function sessionRequest(url: URL, store: SessionStore): Promise<Response> 
       return json({ error: "Session changed while being loaded; try again" }, 409);
     }
 
-    const target = reference.messageIndex >= 0
-      ? session.messages[reference.messageIndex]
-      : session.messages.find((message) =>
-          message.role === reference.role && message.timestamp === reference.timestamp && message.content.includes(reference.content),
-        );
-    if (!target) return json({ error: "Matching message not found; retry after the index updates" }, 409);
+    let targetMessageId = "";
+    if (chunkReference) {
+      const target = chunkReference.messageIndex >= 0
+        ? session.messages[chunkReference.messageIndex]
+        : session.messages.find((message) =>
+            message.role === chunkReference.role && message.timestamp === chunkReference.timestamp && message.content.includes(chunkReference.content),
+          );
+      if (!target) return json({ error: "Matching message not found; retry after the index updates" }, 409);
+      targetMessageId = target.id;
+    }
 
     return json({
       sessionId: reference.sessionId,
       cwd: reference.cwd,
       startedAt: reference.startedAt,
       messages: session.messages,
-      targetMessageId: target.id,
+      targetMessageId,
     });
   } catch {
     return json({ error: "Session file is unavailable" }, 404);
